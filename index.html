@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>研習互動看板 - 最常使用的 AI 工具調查</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- D3.js and D3-Cloud -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-cloud/1.2.7/d3.layout.cloud.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              100: '#e0effe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              900: '#1e3a8a',
+            }
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'float': 'float 4s ease-in-out infinite',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-6px)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif;
+      background: radial-gradient(circle at 15% 15%, #0f172a 0%, #020617 100%);
+      color: #f8fafc;
+      min-height: 100vh;
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+    }
+    .glow-primary {
+      box-shadow: 0 0 25px rgba(59, 130, 246, 0.45);
+    }
+    /* 自訂捲軸 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen text-slate-100 selection:bg-blue-500 selection:text-white">
+
+  <!-- 頂部導航列與切換按鈕 -->
+  <header class="sticky top-0 z-50 glass-card border-b border-slate-700/60 px-4 sm:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
+        <i class="fa-solid fa-brain text-white text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-base sm:text-lg font-bold tracking-tight bg-gradient-to-r from-blue-200 via-white to-indigo-200 bg-clip-text text-transparent">
+          AI 工具研習即時互動看板
+        </h1>
+        <p class="text-xs text-slate-400 flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+          即時同步模式・已累計 <span id="total-badge" class="font-bold text-blue-400">0</span> 筆回饋
+        </p>
+      </div>
+    </div>
+
+    <!-- 視圖切換與雲端操作按鈕 -->
+    <div class="flex items-center flex-wrap gap-2.5">
+      <!-- 模式切換器 -->
+      <div class="bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 flex shadow-inner">
+        <button id="nav-btn-form" onclick="switchView('form')" class="px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 bg-blue-600 text-white shadow-md">
+          <i class="fa-solid fa-pen-to-square"></i>
+          <span>學員填寫</span>
+        </button>
+        <button id="nav-btn-result" onclick="switchView('result')" class="px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 text-slate-400 hover:text-white">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>視覺化結果看板</span>
+        </button>
+      </div>
+
+      <!-- 雲端與功能操作 -->
+      <div class="flex items-center gap-1.5">
+        <button onclick="fetchRecordsFromGAS()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600/80 text-xs sm:text-sm text-blue-300 hover:text-white transition flex items-center gap-1.5" title="重新整理後端資料">
+          <i class="fa-solid fa-rotate" id="refresh-icon"></i>
+          <span class="hidden md:inline">同步資料</span>
+        </button>
+        <button onclick="openDriveExportModal()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600/80 text-xs sm:text-sm font-medium transition text-emerald-300 flex items-center gap-1.5 shadow-sm" title="備份或同步至雲端硬碟">
+          <i class="fa-brands fa-google-drive"></i>
+          <span class="hidden md:inline">雲端硬碟備份</span>
+        </button>
+        <button onclick="toggleQuickDemoData()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600/80 text-xs sm:text-sm text-slate-300 hover:text-white transition flex items-center gap-1.5" title="載入研習預設模擬資料">
+          <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+          <span class="hidden md:inline">示範數據</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容容器 -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col">
+
+    <!-- 視圖 1: 學員填寫頁面 (FORM VIEW) -->
+    <div id="view-form" class="transition-all duration-300">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+       
+        <!-- 左側：填寫表單 -->
+        <div class="lg:col-span-7 glass-card rounded-2xl p-6 sm:p-8 relative overflow-hidden">
+          <div class="absolute -right-16 -top-16 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+          <div class="mb-6">
+            <span class="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 inline-block mb-2">
+              <i class="fa-solid fa-chalkboard-user mr-1"></i> 研習即時互動問卷
+            </span>
+            <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">您最常使用哪款 AI 工具？</h2>
+            <p class="text-slate-400 text-sm mt-1">送出後將即時同步在大螢幕文字雲，票數最多的工具將成為核心焦點！</p>
+          </div>
+
+          <form id="submission-form" onsubmit="handleFormSubmit(event)" class="space-y-5">
+            <!-- 姓名 / 暱稱 -->
+            <div>
+              <label for="student-name" class="block text-xs sm:text-sm font-semibold text-slate-300 mb-1.5">
+                您的暱稱或組別 <span class="text-slate-500 font-normal">(選填)</span>
+              </label>
+              <input type="text" id="student-name" placeholder="例如：第 3 組 Alex 或 小陳"
+                class="w-full px-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 text-white placeholder-slate-500 text-sm outline-none transition">
+            </div>
+
+            <!-- 最常用 AI 工具 -->
+            <div>
+              <label for="ai-tool" class="block text-xs sm:text-sm font-semibold text-slate-300 mb-1.5 flex justify-between items-center">
+                <span>最常使用的 AI 工具名稱 <span class="text-rose-400">*</span></span>
+                <span class="text-xs text-blue-400 cursor-pointer hover:underline" onclick="document.getElementById('ai-tool').focus()">點選下方快捷或直接輸入</span>
+              </label>
+              <input type="text" id="ai-tool" required placeholder="例如：ChatGPT, Midjourney, Claude, Copilot..."
+                class="w-full px-4 py-3 rounded-xl bg-slate-900/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 text-white placeholder-slate-500 text-base font-semibold outline-none transition">
+             
+              <!-- 快速點選標籤 -->
+              <div class="mt-2.5">
+                <span class="text-xs text-slate-400 block mb-1.5">💡 快速點選熱門工具：</span>
+                <div class="flex flex-wrap gap-1.5" id="quick-preset-chips">
+                  <!-- 動態注入熱門標籤 -->
+                </div>
+              </div>
+            </div>
+
+            <!-- 應用場景 / 為什麼喜歡 -->
+            <div>
+              <label for="ai-usage" class="block text-xs sm:text-sm font-semibold text-slate-300 mb-1.5">
+                主要應用場景或一句短評 <span class="text-slate-500 font-normal">(例：寫公文、生圖、學程式)</span>
+              </label>
+              <input type="text" id="ai-usage" placeholder="例如：輔助備課做簡報、自動生成活動文案"
+                class="w-full px-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 text-white placeholder-slate-500 text-sm outline-none transition">
+            </div>
+
+            <!-- 送出按鈕 -->
+            <button type="submit" id="submit-btn" class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-base shadow-lg shadow-blue-500/25 active:scale-[0.99] transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-paper-plane"></i>
+              <span id="submit-btn-text">立即同步送出並查看結果</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- 右側：即時填寫動態預覽 & 研習小資訊 -->
+        <div class="lg:col-span-5 space-y-6">
+          <!-- 即時播報動態 -->
+          <div class="glass-card rounded-2xl p-6">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-700/60 mb-4">
+              <h3 class="font-bold text-sm sm:text-base text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-bolt-lightning text-amber-400"></i>
+                學員最新填寫動態
+              </h3>
+              <span class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">即時串流</span>
+            </div>
+           
+            <div id="live-stream-list" class="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+              <!-- 動態生成動態項 -->
+            </div>
+          </div>
+
+          <!-- 研習講師貼心提示卡 -->
+          <div class="glass-card rounded-2xl p-5 border border-indigo-500/20 bg-indigo-950/20">
+            <div class="flex items-start gap-3">
+              <div class="w-9 h-9 rounded-lg bg-indigo-600/30 border border-indigo-400/30 flex items-center justify-center flex-shrink-0 text-indigo-300">
+                <i class="fa-solid fa-lightbulb"></i>
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-indigo-200">講師投影與互動提示</h4>
+                <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+                  若您是講師或主持人，可在學員完成掃碼或填寫後，點擊上方 <span class="text-blue-300 font-semibold">「視覺化結果看板」</span> 進行投影。字體最大者即為本次研習最多人推薦的明星 AI！
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 視圖 2: 視覺化結果大看板 (RESULT VIEW) -->
+    <div id="view-result" class="hidden flex-1 flex flex-col space-y-6">
+     
+      <!-- 控制列：過濾、投影全螢幕、統計概覽 -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="p-2.5 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
+            <i class="fa-solid fa-chart-simple text-lg"></i>
+          </div>
+          <div>
+            <h2 class="text-lg sm:text-xl font-black text-white">AI 工具聲量視覺化看板</h2>
+            <p class="text-xs text-slate-400">核心放大呈現最高票數工具，點選任一工具可篩選短評</p>
+          </div>
+        </div>
+
+        <div class="flex items-center flex-wrap gap-2">
+          <!-- 重新計算 / 重新排列 -->
+          <button onclick="renderAllResults()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs sm:text-sm font-medium border border-slate-700 text-slate-200 flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-arrows-rotate"></i>
+            <span>重新佈局</span>
+          </button>
+         
+          <!-- 全螢幕切換 -->
+          <button onclick="toggleFullScreen()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs sm:text-sm font-medium border border-slate-700 text-blue-300 flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-expand"></i>
+            <span>投影全螢幕</span>
+          </button>
+
+          <!-- 匯出雲端清單 -->
+          <button onclick="openDriveExportModal()" class="px-3.5 py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/40 text-xs sm:text-sm font-semibold text-emerald-200 flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-file-arrow-down"></i>
+            <span>雲端存檔 / 匯出</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 統計數據條 -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="glass-card rounded-xl p-4 border-l-4 border-l-blue-500">
+          <span class="text-xs text-slate-400 block font-medium">總參與學員人次</span>
+          <span id="stat-total-votes" class="text-2xl font-black text-white mt-1 block">0</span>
+        </div>
+        <div class="glass-card rounded-xl p-4 border-l-4 border-l-indigo-500">
+          <span class="text-xs text-slate-400 block font-medium">提及 AI 工具種類</span>
+          <span id="stat-unique-tools" class="text-2xl font-black text-indigo-300 mt-1 block">0 種</span>
+        </div>
+        <div class="glass-card rounded-xl p-4 border-l-4 border-l-emerald-500">
+          <span class="text-xs text-slate-400 block font-medium">當前榜首 (字體最大)</span>
+          <span id="stat-top-tool" class="text-lg sm:text-xl font-black text-emerald-300 mt-1 truncate block">無</span>
+        </div>
+        <div class="glass-card rounded-xl p-4 border-l-4 border-l-amber-500">
+          <span class="text-xs text-slate-400 block font-medium">最高榜首得票率</span>
+          <span id="stat-top-percent" class="text-2xl font-black text-amber-300 mt-1 block">0%</span>
+        </div>
+      </div>
+
+      <!-- 核心視覺化區域：主文字雲畫布 + 右側排名與學員筆記 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-[500px]">
+       
+        <!-- 核心文字雲畫布 (佔 8 欄) -->
+        <div class="lg:col-span-8 glass-card rounded-2xl p-4 flex flex-col relative overflow-hidden min-h-[460px] border border-blue-500/20">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-700/60 mb-2">
+            <span class="text-xs font-bold text-slate-300 flex items-center gap-2">
+              <i class="fa-solid fa-cloud text-blue-400"></i>
+              權重核心文字雲 (越多人填寫字體越大且置中)
+            </span>
+            <span class="text-xs text-slate-400">懸浮或點擊詞彙查看詳情</span>
+          </div>
+
+          <!-- 畫布容器 -->
+          <div id="wordcloud-container" class="flex-1 w-full relative flex items-center justify-center min-h-[400px]">
+            <div id="wordcloud-loading" class="text-center text-slate-500">
+              <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-2 text-blue-500"></i>
+              <p class="text-sm">文字雲計算中...</p>
+            </div>
+            <div id="wordcloud-svg-wrapper" class="w-full h-full flex items-center justify-center"></div>
+          </div>
+
+          <!-- 圖例提醒 -->
+          <div class="mt-2 pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-[11px] text-slate-400">
+            <span class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded bg-blue-500 inline-block"></span> 居中特大：熱門主流
+              <span class="w-3 h-3 rounded bg-indigo-400 inline-block ml-2"></span> 中型：普及工具
+              <span class="w-3 h-3 rounded bg-slate-400 inline-block ml-2"></span> 小型：特色/小眾工具
+            </span>
+            <span id="current-selected-label" class="text-blue-300 font-medium"></span>
+          </div>
+        </div>
+
+        <!-- 右側：排行榜與短評 (佔 4 欄) -->
+        <div class="lg:col-span-4 flex flex-col space-y-4">
+          <!-- 熱門票數清單 -->
+          <div class="glass-card rounded-2xl p-5 flex flex-col max-h-[320px]">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-700/60 mb-3">
+              <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-ranking-star text-amber-400"></i>
+                票數排行統計
+              </h3>
+              <span class="text-xs text-slate-400">Top 工具</span>
+            </div>
+            <div id="rank-list" class="space-y-2 overflow-y-auto pr-1 flex-1">
+              <!-- 動態生成排行條 -->
+            </div>
+          </div>
+
+          <!-- 學員短評心得專區 -->
+          <div class="glass-card rounded-2xl p-5 flex flex-col flex-1 min-h-[220px]">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-700/60 mb-3">
+              <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-comment-dots text-emerald-400"></i>
+                學員心得與應用
+              </h3>
+              <button onclick="clearDetailFilter()" id="clear-filter-btn" class="hidden text-xs text-blue-400 hover:underline">
+                顯示全部
+              </button>
+            </div>
+            <div id="feedback-notes-list" class="space-y-2.5 overflow-y-auto pr-1 flex-1 max-h-[260px]">
+              <!-- 動態生成心得卡片 -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 雲端硬碟備份 / 匯出 Modal -->
+  <div id="drive-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="glass-card bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative">
+      <button onclick="closeDriveExportModal()" class="absolute right-4 top-4 text-slate-400 hover:text-white p-2">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+          <i class="fa-brands fa-google-drive text-xl"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white">存檔與同步至雲端硬碟 (Google Drive)</h3>
+          <p class="text-xs text-slate-400">提供多種雲端儲存與匯出方式，研習資料永久保存</p>
+        </div>
+      </div>
+
+      <div class="space-y-4 text-sm">
+        <!-- 方案 1: 下載 Google 試算表相容 CSV -->
+        <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between">
+          <div>
+            <h4 class="font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-file-csv text-emerald-400"></i>
+              匯出 Google 試算表相容 CSV
+            </h4>
+            <p class="text-xs text-slate-400 mt-0.5">下載後可直接拖曳上傳至 Google 雲端硬碟開啟為試算表</p>
+          </div>
+          <button onclick="exportToCSV()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 flex-shrink-0">
+            <i class="fa-solid fa-download"></i> 下載 CSV
+          </button>
+        </div>
+
+        <!-- 方案 2: 完整備份 JSON -->
+        <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between">
+          <div>
+            <h4 class="font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-file-code text-blue-400"></i>
+              下載結構化備份檔 (JSON)
+            </h4>
+            <p class="text-xs text-slate-400 mt-0.5">可留存於雲端硬碟，下次研習直接載入還原</p>
+          </div>
+          <button onclick="exportToJSON()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 flex-shrink-0">
+            <i class="fa-solid fa-download"></i> 下載備份
+          </button>
+        </div>
+
+        <!-- 方案 3: 匯入舊有雲端紀錄 -->
+        <div class="p-4 rounded-xl bg-slate-800/50 border border-dashed border-slate-700">
+          <label class="block text-xs font-bold text-slate-300 mb-1.5">
+            <i class="fa-solid fa-file-import mr-1 text-indigo-400"></i>
+            從雲端硬碟下載的 JSON 檔案還原資料：
+          </label>
+          <input type="file" id="import-file-input" accept=".json" onchange="importDataFromFile(event)"
+            class="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600 cursor-pointer">
+        </div>
+
+        <!-- Google Drive 說明區塊 -->
+        <div class="text-xs text-slate-400 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 space-y-1">
+          <p class="font-semibold text-slate-300"><i class="fa-solid fa-circle-info text-blue-400 mr-1"></i> 如何存至 Google 雲端硬碟？</p>
+          <p>1. 點擊「下載 CSV」取得研習填寫統計表。</p>
+          <p>2. 打開您的 <a href="https://drive.google.com" target="_blank" class="text-blue-400 underline">Google 雲端硬碟</a>，直接拖曳該檔案上傳。</p>
+          <p>3. 點兩下檔案並選「以 Google 試算表開啟」，即可永久共同編輯與分享！</p>
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-end">
+        <button onclick="closeDriveExportModal()" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm font-semibold text-slate-300">
+          關閉視窗
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 浮動訊息提示 (Toast) -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl pointer-events-none">
+    <i id="toast-icon" class="fa-solid fa-circle-check text-xl"></i>
+    <span id="toast-message" class="text-sm font-medium">訊息通知</span>
+  </div>
+
+  <!-- 應用程式核心邏輯 JavaScript -->
+  <script>
+    // Google Apps Script 後端部署網址
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbydrpe6xKFkf7wOOQgQoHvn95JAgqJxNoiKWfnNuYi7LaRxAHr-LRdRsZex1vDNvSfW4Q/exec";
+
+    // 常見熱門 AI 工具預設清單（方便學員快速點選）
+    const POPULAR_TOOLS = [
+      "ChatGPT", "Claude", "Midjourney", "Gemini", "GitHub Copilot",
+      "Perplexity", "Notion AI", "Suno", "Canva AI", "Stable Diffusion",
+      "Gamma", "Runway", "Cursor"
+    ];
+
+    // 應用程式狀態 (State) - 預設紀錄清空為 0 筆，避免寫死假資料
+    let state = {
+      currentView: 'form', // 'form' or 'result'
+      records: [],
+      filterTool: null, // 點擊文字雲或排行時的過濾工具
+      cloudLayout: null,
+    };
+
+    // 初始化應用程式
+    window.onload = function() {
+      initPresetChips();
+      updateAllStats();
+      renderLiveStream();
+      renderAllResults();
+      // 頁面載入時立即從後端 GAS 載入資料
+      fetchRecordsFromGAS();
+    };
+
+    // 從 Google Apps Script Web App 讀取歷史資料
+    async function fetchRecordsFromGAS() {
+      const refreshIcon = document.getElementById('refresh-icon');
+      if (refreshIcon) refreshIcon.classList.add('fa-spin');
+
+      try {
+        const response = await fetch(GAS_WEB_APP_URL, {
+          method: 'GET',
+          redirect: 'follow'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          let rawList = [];
+
+          if (Array.isArray(data)) {
+            rawList = data;
+          } else if (data && Array.isArray(data.records)) {
+            rawList = data.records;
+          } else if (data && Array.isArray(data.data)) {
+            rawList = data.data;
+          }
+
+          // 徹底覆蓋 state.records，精準對應各種可能欄位名稱
+          state.records = rawList.map((item, index) => {
+            const rawName = item.name || item.studentName || item.nickname || item['暱稱'] || item['姓名'] || '匿名學員';
+            const rawTool = item.tool || item.aiTool || item['最常用AI工具'] || item['AI工具'] || '';
+            const rawUsage = item.usage || item.aiUsage || item.description || item['主要應用'] || item['短評'] || '日常研習與工作輔助';
+            const rawTime = item.timestamp || item.time || item['填寫時間'] || Date.now();
+
+            return {
+              id: item.id || String(index + 1),
+              name: String(rawName),
+              tool: normalizeToolName(String(rawTool)),
+              usage: String(rawUsage),
+              timestamp: isNaN(new Date(rawTime).getTime()) ? Date.now() : new Date(rawTime).getTime()
+            };
+          }).filter(r => r.tool.trim() !== ''); // 過濾無效紀錄
+
+          // 時間倒序（最新在最前）
+          state.records.sort((a, b) => b.timestamp - a.timestamp);
+
+          updateAllStats();
+          renderLiveStream();
+          renderAllResults();
+
+          if (state.records.length > 0) {
+            showToast(`已成功讀取 ${state.records.length} 筆即時資料！`, 'success');
+          } else {
+            showToast('後端尚無填寫紀錄，目前統計為 0 筆', 'info');
+          }
+        } else {
+          showToast('無法取得雲端資料，請檢查 GAS 部署設定', 'error');
+        }
+      } catch (error) {
+        console.error('讀取 GAS 發生錯誤:', error);
+        showToast('無法讀取後端資料，請確認 Apps Script 權限已開啟為「任何人」', 'error');
+      } finally {
+        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+      }
+    }
+
+    // 初始化常用工具標籤按鈕
+    function initPresetChips() {
+      const container = document.getElementById('quick-preset-chips');
+      container.innerHTML = '';
+      POPULAR_TOOLS.forEach(tool => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600/40 border border-slate-700 hover:border-blue-500/50 text-slate-300 hover:text-white transition cursor-pointer';
+        btn.textContent = `+ ${tool}`;
+        btn.onclick = () => {
+          document.getElementById('ai-tool').value = tool;
+          document.getElementById('ai-usage').focus();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    // 視圖切換函數
+    function switchView(viewName) {
+      state.currentView = viewName;
+      const formView = document.getElementById('view-form');
+      const resultView = document.getElementById('view-result');
+      const btnForm = document.getElementById('nav-btn-form');
+      const btnResult = document.getElementById('nav-btn-result');
+
+      if (viewName === 'form') {
+        formView.classList.remove('hidden');
+        resultView.classList.add('hidden');
+        btnForm.className = "px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 bg-blue-600 text-white shadow-md";
+        btnResult.className = "px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 text-slate-400 hover:text-white";
+      } else {
+        formView.classList.add('hidden');
+        resultView.classList.remove('hidden');
+        btnResult.className = "px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 bg-blue-600 text-white shadow-md";
+        btnForm.className = "px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 text-slate-400 hover:text-white";
+        // 切換到看板時重新繪製文字雲
+        setTimeout(renderAllResults, 50);
+      }
+    }
+
+    // 表單提交處理 (同步傳送至 GAS 後端)
+    async function handleFormSubmit(e) {
+      e.preventDefault();
+      const submitBtn = document.getElementById('submit-btn');
+      const submitBtnText = document.getElementById('submit-btn-text');
+      const nameInput = document.getElementById('student-name');
+      const toolInput = document.getElementById('ai-tool');
+      const usageInput = document.getElementById('ai-usage');
+
+      const toolVal = toolInput.value.trim();
+      if (!toolVal) return;
+
+      const normalizedTool = normalizeToolName(toolVal);
+      const studentName = nameInput.value.trim() || `學員 ${Math.floor(Math.random() * 899 + 100)}`;
+      const usageVal = usageInput.value.trim() || '日常研習與工作輔助';
+
+      const payload = {
+        name: studentName,
+        tool: normalizedTool,
+        usage: usageVal,
+        timestamp: new Date().toISOString()
+      };
+
+      submitBtn.disabled = true;
+      submitBtnText.textContent = '資料同步傳送中...';
+
+      try {
+        await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        // 寫入本地前端狀態以供即時渲染
+        const newRecord = {
+          id: Date.now().toString(),
+          name: studentName,
+          tool: normalizedTool,
+          usage: usageVal,
+          timestamp: Date.now()
+        };
+        state.records.unshift(newRecord);
+
+        toolInput.value = '';
+        usageInput.value = '';
+
+        showToast(`🎉 成功同步！「${normalizedTool}」已寫入後端`, 'success');
+
+        updateAllStats();
+        renderLiveStream();
+        renderAllResults();
+
+        // 重新獲取後端最新彙整
+        setTimeout(fetchRecordsFromGAS, 1200);
+
+        setTimeout(() => {
+          switchView('result');
+        }, 700);
+
+      } catch (err) {
+        console.error('儲存失敗：', err);
+        showToast('後端儲存發生異常，已暫存至本地畫面', 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtnText.textContent = '立即同步送出並查看結果';
+      }
+    }
+
+    // 工具名稱標準化
+    function normalizeToolName(name) {
+      if (!name) return '';
+      const lower = name.toLowerCase().trim();
+      if (lower === 'chatgpt' || lower === 'chat gpt' || lower === 'gpt') return 'ChatGPT';
+      if (lower === 'claude' || lower === 'claude 3' || lower === 'claude 3.5') return 'Claude';
+      if (lower === 'midjourney' || lower === 'mj') return 'Midjourney';
+      if (lower === 'gemini' || lower === 'bard') return 'Gemini';
+      if (lower === 'copilot' || lower === 'github copilot') return 'GitHub Copilot';
+      if (lower === 'perplexity') return 'Perplexity';
+      if (lower === 'notion ai' || lower === 'notion') return 'Notion AI';
+      if (lower === 'suno' || lower === 'suno ai') return 'Suno';
+      if (lower === 'canva' || lower === 'canva ai') return 'Canva AI';
+      if (lower === 'gamma' || lower === 'gamma app') return 'Gamma';
+      return name;
+    }
+
+    // 計算頻率統計
+    function getAggregatedData() {
+      const counts = {};
+      state.records.forEach(r => {
+        if (r.tool) {
+          counts[r.tool] = (counts[r.tool] || 0) + 1;
+        }
+      });
+
+      return Object.entries(counts).map(([text, value]) => ({
+        text,
+        value
+      })).sort((a, b) => b.value - a.value);
+    }
+
+    // 更新統計指標列
+    function updateAllStats() {
+      const agg = getAggregatedData();
+      const totalVotes = state.records.length;
+     
+      document.getElementById('total-badge').textContent = totalVotes;
+      document.getElementById('stat-total-votes').textContent = totalVotes;
+      document.getElementById('stat-unique-tools').textContent = `${agg.length} 種`;
+
+      if (agg.length > 0) {
+        const top = agg[0];
+        document.getElementById('stat-top-tool').textContent = `${top.text} (${top.value}票)`;
+        const pct = Math.round((top.value / (totalVotes || 1)) * 100);
+        document.getElementById('stat-top-percent').textContent = `${pct}%`;
+      } else {
+        document.getElementById('stat-top-tool').textContent = '無';
+        document.getElementById('stat-top-percent').textContent = '0%';
+      }
+    }
+
+    // 渲染學員即時動態串流 (首頁右側)
+    function renderLiveStream() {
+      const streamContainer = document.getElementById('live-stream-list');
+      streamContainer.innerHTML = '';
+
+      if (state.records.length === 0) {
+        streamContainer.innerHTML = `<p class="text-xs text-slate-500 py-6 text-center">目前尚無研習填寫資料</p>`;
+        return;
+      }
+
+      state.records.slice(0, 10).forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'p-3 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 transition flex items-start justify-between gap-2';
+       
+        const timeAgo = formatTimeAgo(r.timestamp);
+
+        item.innerHTML = `
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-xs text-slate-200 truncate">${escapeHTML(r.name)}</span>
+              <span class="text-[10px] text-slate-500">• ${timeAgo}</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 truncate">「${escapeHTML(r.usage)}」</p>
+          </div>
+          <span class="px-2 py-0.5 rounded-lg text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 flex-shrink-0">
+            ${escapeHTML(r.tool)}
+          </span>
+        `;
+        streamContainer.appendChild(item);
+      });
+    }
+
+    // 渲染所有結果 (包含文字雲、排行榜條、心得區)
+    function renderAllResults() {
+      updateAllStats();
+      renderWordCloud();
+      renderRankList();
+      renderFeedbackNotes();
+    }
+
+    // 核心亮點：繪製文字雲
+    function renderWordCloud() {
+      const wrapper = document.getElementById('wordcloud-svg-wrapper');
+      const loading = document.getElementById('wordcloud-loading');
+     
+      const words = getAggregatedData();
+      if (words.length === 0) {
+        wrapper.innerHTML = `<p class="text-slate-500 text-sm">目前尚無數據，請先填寫資料</p>`;
+        loading.classList.add('hidden');
+        return;
+      }
+
+      loading.classList.remove('hidden');
+      wrapper.innerHTML = '';
+
+      const container = document.getElementById('wordcloud-container');
+      const width = Math.max(container.clientWidth || 600, 320);
+      const height = Math.max(container.clientHeight || 420, 380);
+
+      const maxVal = d3.max(words, d => d.value) || 1;
+      const minVal = d3.min(words, d => d.value) || 1;
+
+      const fontScale = d3.scaleSqrt()
+        .domain([minVal, maxVal])
+        .range([18, Math.min(width / 7, 68)]);
+
+      const colorScale = d3.scaleOrdinal()
+        .range([
+          '#60a5fa', '#38bdf8', '#818cf8', '#a78bfa',
+          '#34d399', '#f472b6', '#fbbf24', '#cbd5e1'
+        ]);
+
+      const topWord = words[0]?.text;
+
+      const layout = d3.layout.cloud()
+        .size([width, height])
+        .words(words.map(d => ({
+          text: d.text,
+          size: fontScale(d.value),
+          value: d.value,
+          isTop: d.text === topWord
+        })))
+        .padding(6)
+        .rotate(() => 0)
+        .font('Noto Sans TC, Plus Jakarta Sans, sans-serif')
+        .fontSize(d => d.size)
+        .spiral('archimedean')
+        .on('end', draw);
+
+      state.cloudLayout = layout;
+      layout.start();
+
+      function draw(computedWords) {
+        loading.classList.add('hidden');
+
+        const svg = d3.select('#wordcloud-svg-wrapper')
+          .append('svg')
+          .attr('width', '100%')
+          .attr('height', '100%')
+          .attr('viewBox', `0 0 ${width} ${height}`)
+          .attr('class', 'overflow-visible');
+
+        const g = svg.append('g')
+          .attr('transform', `translate(${width / 2}, ${height / 2})`);
+
+        g.append('circle')
+          .attr('r', Math.min(width, height) * 0.22)
+          .attr('fill', 'none')
+          .attr('stroke', 'rgba(59, 130, 246, 0.15)')
+          .attr('stroke-width', 2)
+          .attr('stroke-dasharray', '4 4');
+
+        const textNodes = g.selectAll('text')
+          .data(computedWords)
+          .enter()
+          .append('text')
+          .style('font-family', 'inherit')
+          .style('font-weight', d => d.isTop ? '900' : (d.value > 1 ? '700' : '500'))
+          .style('fill', (d, i) => d.isTop ? '#60a5fa' : colorScale(i))
+          .attr('text-anchor', 'middle')
+          .attr('transform', d => `translate(${d.x}, ${d.y})`)
+          .attr('font-size', d => `${d.size}px`)
+          .text(d => d.text)
+          .attr('class', d => `cursor-pointer transition-all duration-200 select-none ${d.isTop ? 'filter drop-shadow-[0_0_15px_rgba(96,165,250,0.8)]' : ''}`)
+          .style('opacity', 0)
+          .transition()
+          .duration(600)
+          .style('opacity', 1);
+
+        g.selectAll('text')
+          .on('mouseover', function(event, d) {
+            d3.select(this)
+              .transition().duration(150)
+              .style('transform', `scale(1.15)`)
+              .style('fill', '#ffffff');
+            document.getElementById('current-selected-label').textContent = `🔍 ${d.text}：共 ${d.value} 票 (${Math.round(d.value / (state.records.length || 1) * 100)}%)`;
+          })
+          .on('mouseout', function(event, d) {
+            d3.select(this)
+              .transition().duration(150)
+              .style('transform', 'scale(1)')
+              .style('fill', (d, i) => d.isTop ? '#60a5fa' : colorScale(computedWords.indexOf(d)));
+          })
+          .on('click', function(event, d) {
+            filterByTool(d.text);
+          });
+      }
+    }
+
+    // 依工具篩選右側心得
+    function filterByTool(toolName) {
+      state.filterTool = toolName;
+      document.getElementById('clear-filter-btn').classList.remove('hidden');
+      document.getElementById('current-selected-label').textContent = `📌 目前已篩選：${toolName}`;
+      renderFeedbackNotes();
+    }
+
+    // 清除篩選
+    function clearDetailFilter() {
+      state.filterTool = null;
+      document.getElementById('clear-filter-btn').classList.add('hidden');
+      document.getElementById('current-selected-label').textContent = '';
+      renderFeedbackNotes();
+    }
+
+    // 渲染排行榜條狀圖
+    function renderRankList() {
+      const container = document.getElementById('rank-list');
+      container.innerHTML = '';
+      const list = getAggregatedData();
+      const maxVotes = list[0]?.value || 1;
+
+      if (list.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 py-4 text-center">尚無投票排名</p>`;
+        return;
+      }
+
+      list.forEach((item, index) => {
+        const pct = Math.round((item.value / maxVotes) * 100);
+        const isLeader = index === 0;
+
+        const row = document.createElement('div');
+        row.className = `p-2.5 rounded-xl border transition cursor-pointer flex flex-col gap-1.5 ${
+          state.filterTool === item.text
+            ? 'bg-blue-900/40 border-blue-500'
+            : 'bg-slate-900/50 border-slate-800 hover:border-slate-700'
+        }`;
+        row.onclick = () => filterByTool(item.text);
+
+        row.innerHTML = `
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold flex items-center gap-1.5 ${isLeader ? 'text-amber-300' : 'text-slate-200'}">
+              <span class="w-4 text-center font-black ${isLeader ? 'text-amber-400' : 'text-slate-500'}">${index + 1}</span>
+              ${escapeHTML(item.text)}
+              ${isLeader ? '<i class="fa-solid fa-crown text-[10px] text-amber-400"></i>' : ''}
+            </span>
+            <span class="font-extrabold text-blue-400">${item.value} 票</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div class="h-full rounded-full ${isLeader ? 'bg-gradient-to-r from-blue-500 to-indigo-400' : 'bg-slate-600'}" style="width: ${pct}%"></div>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    // 渲染學員心得筆記
+    function renderFeedbackNotes() {
+      const container = document.getElementById('feedback-notes-list');
+      container.innerHTML = '';
+
+      let notes = state.records;
+      if (state.filterTool) {
+        notes = notes.filter(r => r.tool.toLowerCase() === state.filterTool.toLowerCase());
+      }
+
+      if (notes.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 py-6 text-center">無符合該條件的心得資料</p>`;
+        return;
+      }
+
+      notes.forEach(r => {
+        const card = document.createElement('div');
+        card.className = 'p-3 rounded-xl bg-slate-900/70 border border-slate-800 text-xs';
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-1 mb-1">
+            <span class="font-bold text-slate-300">${escapeHTML(r.name)}</span>
+            <span class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-blue-400 font-semibold border border-slate-700">
+              ${escapeHTML(r.tool)}
+            </span>
+          </div>
+          <p class="text-slate-400 leading-relaxed font-normal">${escapeHTML(r.usage)}</p>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // 視窗縮放事件
+    let resizeTimer;
+    window.onresize = function() {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (state.currentView === 'result') {
+          renderWordCloud();
+        }
+      }, 250);
+    };
+
+    // 快速注入示範資料
+    function toggleQuickDemoData() {
+      const sampleNames = ['第1組 林老師', '教務處 廖組長', '自然科 柯老師', '生科社 志工'];
+      const sampleTools = ['ChatGPT', 'Claude', 'Perplexity', 'Suno', 'Midjourney'];
+      const sampleUsages = ['產生分組競賽題目', '備審資料重點整理', '學生自評表引導問答', '製作教學投影片配樂'];
+
+      const rName = sampleNames[Math.floor(Math.random() * sampleNames.length)];
+      const rTool = sampleTools[Math.floor(Math.random() * sampleTools.length)];
+      const rUsage = sampleUsages[Math.floor(Math.random() * sampleUsages.length)];
+
+      state.records.unshift({
+        id: Date.now().toString(),
+        name: rName,
+        tool: rTool,
+        usage: rUsage,
+        timestamp: Date.now()
+      });
+
+      showToast(`已加入測試學員「${rName}」填寫的 ${rTool}！`, 'info');
+      updateAllStats();
+      renderLiveStream();
+      renderAllResults();
+    }
+
+    // 切換全螢幕
+    function toggleFullScreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          showToast(`無法切換全螢幕: ${err.message}`, 'error');
+        });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    function openDriveExportModal() {
+      document.getElementById('drive-modal').classList.remove('hidden');
+    }
+    function closeDriveExportModal() {
+      document.getElementById('drive-modal').classList.add('hidden');
+    }
+
+    function exportToCSV() {
+      if (state.records.length === 0) {
+        showToast('目前尚無資料可匯出', 'error');
+        return;
+      }
+
+      let csvContent = "\uFEFF填寫時間,學員稱呼,最常用AI工具,主要應用心得與場景\n";
+
+      state.records.forEach(r => {
+        const timeStr = new Date(r.timestamp).toLocaleString('zh-TW');
+        const nameStr = `"${(r.name || '').replace(/"/g, '""')}"`;
+        const toolStr = `"${(r.tool || '').replace(/"/g, '""')}"`;
+        const usageStr = `"${(r.usage || '').replace(/"/g, '""')}"`;
+        csvContent += `${timeStr},${nameStr},${toolStr},${usageStr}\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `研習AI工具統計_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast('CSV 檔案已下載！', 'success');
+    }
+
+    function exportToJSON() {
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        workshopTitle: "AI 工具研習即時互動問卷資料",
+        records: state.records
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `AI研習資料備份_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+
+      showToast('備份 JSON 已下載！', 'success');
+    }
+
+    function importDataFromFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (Array.isArray(parsed.records)) {
+            state.records = parsed.records;
+          } else if (Array.isArray(parsed)) {
+            state.records = parsed;
+          } else {
+            throw new Error('資料結構不符合');
+          }
+          updateAllStats();
+          renderLiveStream();
+          renderAllResults();
+          closeDriveExportModal();
+          showToast(`🎉 成功從檔案還原 ${state.records.length} 筆研習紀錄！`, 'success');
+        } catch (err) {
+          showToast('匯入失敗：檔案格式不正確', 'error');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function formatTimeAgo(ts) {
+      const diffMs = Date.now() - ts;
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return '剛剛';
+      if (mins < 60) return `${mins} 分鐘前`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs} 小時前`;
+      return `${Math.floor(hrs / 24)} 天前`;
+    }
+
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    let toastTimeout;
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const msgEl = document.getElementById('toast-message');
+      const iconEl = document.getElementById('toast-icon');
+
+      clearTimeout(toastTimeout);
+      msgEl.textContent = message;
+
+      if (type === 'success') {
+        toast.className = 'fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl transition-all duration-300 bg-emerald-600 text-white font-medium';
+        iconEl.className = 'fa-solid fa-circle-check text-lg';
+      } else if (type === 'error') {
+        toast.className = 'fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl transition-all duration-300 bg-rose-600 text-white font-medium';
+        iconEl.className = 'fa-solid fa-triangle-exclamation text-lg';
+      } else {
+        toast.className = 'fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl transition-all duration-300 bg-blue-600 text-white font-medium';
+        iconEl.className = 'fa-solid fa-circle-info text-lg';
+      }
+
+      toast.style.transform = 'translateY(0)';
+      toast.style.opacity = '1';
+
+      toastTimeout = setTimeout(() => {
+        toast.style.transform = 'translateY(5rem)';
+        toast.style.opacity = '0';
+      }, 3500);
+    }
+  </script>
+</body>
+</html>
